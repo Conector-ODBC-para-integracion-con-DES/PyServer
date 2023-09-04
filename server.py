@@ -276,16 +276,12 @@ async def handle_server(server_reader, server_writer):
                         result = EOF(capability, handshake.status)
                     elif data and des_result[0].strip().isdigit():  # Si es una respuesta de INSERT
                         message = f"{data[0]}"
-                        # EOF(capability, handshake.status, message=message).write(server_writer)
-                        # result = EOF(capability, handshake.status)
                         ColumnDefinitionList((ColumnDefinition('Error'),)).write(server_writer)
                         EOF(capability, handshake.status).write(server_writer)
                         ResultSet((message,)).write(server_writer)
                         result = EOF(capability, handshake.status)
                     elif data != []:  # Si es una respuesta de DES que no es SELECT ni INSERT
                         message = f"{data[0]}"
-                        # EOF(capability, handshake.status, message=message).write(server_writer)
-                        # result = EOF(capability, handshake.status)
                         ColumnDefinitionList((ColumnDefinition('Error'),)).write(server_writer)
                         EOF(capability, handshake.status).write(server_writer)
                         ResultSet((message,)).write(server_writer)
@@ -294,17 +290,12 @@ async def handle_server(server_reader, server_writer):
                         result = OK(capability, handshake.status)
 
                 else:
-                    # result = OK(capability, handshake.status)
                     error_message = '\n'.join(data[1:])  # Excluye '$eot' y la línea vacía al final
                     ColumnDefinitionList((ColumnDefinition('Error'),)).write(server_writer)
                     EOF(capability, handshake.status).write(server_writer)
                     ResultSet((error_message,)).write(server_writer)
                     result = EOF(capability, handshake.status)
-                    # Envía un paquete de error con el mensaje de DES
-                    # result = ERR(capability, status=data)
-                        # Dependiendo del resultado de DES, puedes enviar un OK o un ERR.
-                        # Por ahora, simplemente enviamos un OK. Modifica según tus necesidades.
-
+                    
         else:
             result = ERR(capability)
 
