@@ -13,12 +13,16 @@ import queue
 from functools import wraps
 import os
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 def get_des_route():
     conf_file = "conf.txt"
     
     # Intentar leer el archivo conf.txt
     if os.path.exists(conf_file):
+        logging.info("Leyendo archivo de configuración: %s", conf_file)
+
         with open(conf_file, "r") as file:
             lines = file.readlines()
             for line in lines:
@@ -28,6 +32,7 @@ def get_des_route():
             else:
                 des_route = None
     else:
+        logging.warning("Archivo de configuración %s no encontrado.", conf_file)
         des_route = None
 
     # Si el archivo no existe o DES_ROUTE no está en el archivo
@@ -49,13 +54,14 @@ def get_des_route():
 
 def connect_to_des():
     des_route = get_des_route()
-    print("Starting DES connection...")
     
     try:
         process = subprocess.Popen([des_route, "-c"],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        logging.info("Conexión con DES iniciada.")
+
     except FileNotFoundError:
-        print("Error: No se pudo encontrar el archivo especificado.")
+        logging.error("No se pudo encontrar el archivo especificado en %s", des_route)
         # Borrar la ruta incorrecta y pedir al usuario que ingrese una nueva
         os.remove("conf.txt")
         return connect_to_des()
@@ -73,7 +79,8 @@ def connect_to_des():
     threading.Thread(target=reader_thread, args=(process, output_queue), daemon=True).start()
     
     # Limpia el mensaje inicial
-    print("Cleaning initial DES message...")
+    logging.info("Limpiando mensaje incial de DES...")
+
     read_until_markerInitialMessage(output_queue, "DES>")
     
     return process, output_queue
@@ -189,8 +196,7 @@ def read_until_marker(q, marker, timeout=10):
 def execute_des_query(process, q, query):
     transformed_query = "/tapi " + query
     # transformed_query = "" + query
-
-    print(f"Executing query: {transformed_query}")
+    logging.info("Ejecutando consulta: %s", transformed_query)
     process.stdin.write(transformed_query + '\n')
     process.stdin.flush()
     
@@ -234,11 +240,13 @@ async def handle_server(server_reader, server_writer):
         # print("<=", cmd)
 
         if cmd == 1:
+            logging.info("Cliente desconectado.")
             return
 
         elif cmd == 3:
             query = (await packet.read()).decode('ascii')
             
+
             # Filtra las consultas no deseadas
             mysql_specific_commands = [
                 "SET NAMES",
@@ -246,26 +254,28 @@ async def handle_server(server_reader, server_writer):
                 "SET SQL_AUTO_IS_NULL",
                 "SET AUTOCOMMIT",
                 "set @@sql_select_limit",
+                "SELECT TABLE_NAME,TABLE_COMMENT,IF(TABLE_TYPE='BASE TABLE', 'TABLE', TABLE_TYPE),TABLE_SCHEMA FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=DATABASE() AND ( TABLE_TYPE='BASE TABLE' OR TABLE_TYPE='VIEW' )  ORDER BY TABLE_SCHEMA, TABLE_NAME",
                 "ROLLBACK"
             ]
             if any(command in query for command in mysql_specific_commands):
                 # No enviar a DES, tal vez responder con un paquete de éxito falso
                 result = OK(capability, handshake.status)
-
+            
             elif query == 'select 1':
+                logging.info("Consulta recibida: %s", query)
                 ColumnDefinitionList((ColumnDefinition('database'),)).write(server_writer)
                 EOF(capability, handshake.status).write(server_writer)
                 ResultSet(('test',)).write(server_writer)
                 result = EOF(capability, handshake.status)
 
             else:
+                logging.info("Consulta recibida: %s", query)
                 # Reenvía la consulta a DES
                 des_result = execute_des_query(process, output_queue, query)
                 # print("<=   query:", query)
 
-                print("Result from DES:", des_result)
+                logging.info("Result from DES: %s", des_result)
                 success, data = parse_des_response(des_result)
-                print("success:", success, "data:", data)
                 if success:
                     if data and ' | ' in data[0]:  # Si parece un resultado formateado de SELECT
                         num_columns = len(data[0].split(' | '))
@@ -276,12 +286,16 @@ async def handle_server(server_reader, server_writer):
                         result = EOF(capability, handshake.status)
                     elif data and des_result[0].strip().isdigit():  # Si es una respuesta de INSERT
                         message = f"{data[0]}"
+                        # EOF(capability, handshake.status, message=message).write(server_writer)
+                        # result = EOF(capability, handshake.status)
                         ColumnDefinitionList((ColumnDefinition('Error'),)).write(server_writer)
                         EOF(capability, handshake.status).write(server_writer)
                         ResultSet((message,)).write(server_writer)
                         result = EOF(capability, handshake.status)
                     elif data != []:  # Si es una respuesta de DES que no es SELECT ni INSERT
                         message = f"{data[0]}"
+                        # EOF(capability, handshake.status, message=message).write(server_writer)
+                        # result = EOF(capability, handshake.status)
                         ColumnDefinitionList((ColumnDefinition('Error'),)).write(server_writer)
                         EOF(capability, handshake.status).write(server_writer)
                         ResultSet((message,)).write(server_writer)
@@ -290,12 +304,18 @@ async def handle_server(server_reader, server_writer):
                         result = OK(capability, handshake.status)
 
                 else:
+                    logging.info("Consulta recibida: %s", query)
+                    # result = OK(capability, handshake.status)
                     error_message = '\n'.join(data[1:])  # Excluye '$eot' y la línea vacía al final
                     ColumnDefinitionList((ColumnDefinition('Error'),)).write(server_writer)
                     EOF(capability, handshake.status).write(server_writer)
                     ResultSet((error_message,)).write(server_writer)
                     result = EOF(capability, handshake.status)
-                    
+                    # Envía un paquete de error con el mensaje de DES
+                    # result = ERR(capability, status=data)
+                        # Dependiendo del resultado de DES, puedes enviar un OK o un ERR.
+                        # Por ahora, simplemente enviamos un OK. Modifica según tus necesidades.
+
         else:
             result = ERR(capability)
 
@@ -303,13 +323,14 @@ async def handle_server(server_reader, server_writer):
         await server_writer.drain()
 
 
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 port = 3307
-print("Starting server in port " + str(port) + "...")
 
 try:
     loop = asyncio.get_event_loop()
     loop.run_until_complete(start_mysql_server(handle_server, host=None, port=port))
+    logging.info("Servidor iniciado en el puerto: %s", port)
+
     process, output_queue = connect_to_des()
     loop.run_forever()
 except Exception as e:
