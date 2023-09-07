@@ -1,5 +1,8 @@
 import asyncio
 import struct
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class _MysqlStreamSequence:
@@ -112,9 +115,11 @@ async def start_mysql_server(client_connected_cb, host='0.0.0.0', port=None, **k
         writer_m = MysqlStreamWriter(writer, seq)
         await client_connected_cb(reader_m, writer_m)
 
+    logging.info("Iniciando el servidor en puerto %s", port)
+    
     try:
         server = await asyncio.start_server(cb, host, port, **kwds)
-        print("Server successfully started!")
         return server
     except Exception as e:
         print(f"Failed to start server: {e}")
+        logging.error("Error al iniciar el servidor MySQL: %s", e)
