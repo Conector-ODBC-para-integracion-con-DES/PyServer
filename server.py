@@ -255,9 +255,11 @@ async def handle_server(server_reader, server_writer):
                 "SET AUTOCOMMIT",
                 "set @@sql_select_limit",
                 "SELECT TABLE_NAME,TABLE_COMMENT,IF(TABLE_TYPE='BASE TABLE', 'TABLE', TABLE_TYPE),TABLE_SCHEMA FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=DATABASE() AND ( TABLE_TYPE='BASE TABLE' OR TABLE_TYPE='VIEW' )  ORDER BY TABLE_SCHEMA, TABLE_NAME",
+                "SELECT TABLE_NAME, TABLE_COMMENT, TABLE_TYPE, TABLE_SCHEMA FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND ( TABLE_TYPE='BASE TABLE' OR TABLE_TYPE='VIEW' )"
                 "ROLLBACK"
+
             ]
-            if any(command in query for command in mysql_specific_commands):
+            if any(command in query for command in mysql_specific_commands) or query.startswith("SELECT TABLE_NAME,"):
                 # No enviar a DES, tal vez responder con un paquete de éxito falso
                 result = OK(capability, handshake.status)
             
