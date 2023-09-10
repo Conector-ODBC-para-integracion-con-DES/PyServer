@@ -179,18 +179,31 @@ def read_until_markerInitialMessage(q, marker, timeout=10):
 
 
 
-def read_until_marker(q, marker, timeout=10):
-    end_time = time.time() + timeout
+#def read_until_marker(q, marker, timeout=10):
+    #end_time = time.time() + timeout
+    #buffer = ''
+    #while time.time() < end_time:
+        #try:
+            #char = q.get(timeout=0.1)
+        #except queue.Empty:
+            #continue
+        #buffer += char
+        #if marker in buffer[-len(marker):]:
+            #break
+    #return buffer
+
+def read_until_marker(q, marker):
     buffer = ''
-    while time.time() < end_time:
+    while True:
         try:
             char = q.get(timeout=0.1)
+            buffer += char
+            if marker in buffer[-len(marker):]:
+                break
         except queue.Empty:
-            continue
-        buffer += char
-        if marker in buffer[-len(marker):]:
-            break
+            break  # Salimos inmediatamente si no hay más datos en la cola.
     return buffer
+
 
 
 def execute_des_query(process, q, query):
