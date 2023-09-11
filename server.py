@@ -90,56 +90,11 @@ def parse_des_response(des_result):
     if not lines:
         return False, []
 
-    # Comprueba mensajes de éxito
-    if lines[0].startswith(' $success') or lines[0].startswith('$success'):
-        return True, []
-
-    # Comprueba mensajes de error
-    if lines[0].startswith(" $error") or lines[0].startswith("$error"):
-        return False, lines[1:-1]  # Excluye '$eot'
-
-    if des_result.strip().isdigit():
-        num_rows = int(des_result.strip())
-        if num_rows > 0:
-            return True, [f"{num_rows} fila(s) insertada(s) exitosamente."]
-        else:
-            return False, ["Ninguna fila fue insertada."]
-        
-   
+    # Separar cada línea por el delimitador para obtener las columnas
+    rows = [line.split(' | ') for line in lines]
     
-
-    if lines[1].startswith(" answer") or lines[1].startswith("answer"):
-        # Procesa resultados de SELECT
-        # Ignoramos las líneas de metadatos hasta encontrar el primer `$`
-        while lines and lines[0] != '$':
-            lines.pop(0)
-
-        if not lines:
-            return False, ["Error en el formato del resultado de DES."]
-
-        # Deshacernos del primer `$`, que marca el inicio de los datos
-        lines.pop(0)
-
-
-        formatted_results = []
-        row_data = []
-        for line in lines:
-            if line in ['$', '$eot']:
-                # Final de una fila, unimos los datos y agregamos a los resultados
-                formatted_results.append(' | '.join(row_data))
-                row_data = []  # reinicia row_data para la siguiente fila
-            else:
-                row_data.append(line)
-                
-
-        return True, formatted_results
-    else:
-        # Procesa comandos
-        result_str = ' | '.join(lines[:-1])  # unimos todo excepto el último elemento que es `$eot`
-        return True, [result_str]
-
-
-
+    logging.info("Líneas de la respuesta de DES: %s", rows)
+    return True, rows
 
 
 
@@ -277,59 +232,32 @@ async def handle_server(server_reader, server_writer):
                 result = OK(capability, handshake.status)
             
             elif query == 'select 1':
-                logging.info("Consulta recibida: %s", query)
+                logging.info("Consulta recibida en select 1: %s", query)
                 ColumnDefinitionList((ColumnDefinition('database'),)).write(server_writer)
                 EOF(capability, handshake.status).write(server_writer)
                 ResultSet(('test',)).write(server_writer)
                 result = EOF(capability, handshake.status)
 
             else:
-                logging.info("Consulta recibida: %s", query)
+                logging.info("Consulta recibida en else: %s", query)
                 # Reenvía la consulta a DES
                 des_result = execute_des_query(process, output_queue, query)
-                # print("<=   query:", query)
-
                 logging.info("Result from DES: %s", des_result)
                 success, data = parse_des_response(des_result)
                 if success:
-                    if data and ' | ' in data[0]:  # Si parece un resultado formateado de SELECT
-                        num_columns = len(data[0].split(' | '))
-                        ColumnDefinitionList(tuple(ColumnDefinition('column_{}'.format(i+1)) for i in range(num_columns))).write(server_writer)
-                        EOF(capability, handshake.status).write(server_writer)
-                        for item in data:
-                            ResultSet(tuple(item.split(' | '))).write(server_writer)
-                        result = EOF(capability, handshake.status)
-                    elif data and des_result[0].strip().isdigit():  # Si es una respuesta de INSERT
-                        message = f"{data[0]}"
-                        # EOF(capability, handshake.status, message=message).write(server_writer)
-                        # result = EOF(capability, handshake.status)
-                        ColumnDefinitionList((ColumnDefinition('Error'),)).write(server_writer)
-                        EOF(capability, handshake.status).write(server_writer)
-                        ResultSet((message,)).write(server_writer)
-                        result = EOF(capability, handshake.status)
-                    elif data != []:  # Si es una respuesta de DES que no es SELECT ni INSERT
-                        message = f"{data[0]}"
-                        # EOF(capability, handshake.status, message=message).write(server_writer)
-                        # result = EOF(capability, handshake.status)
-                        ColumnDefinitionList((ColumnDefinition('Error'),)).write(server_writer)
-                        EOF(capability, handshake.status).write(server_writer)
-                        ResultSet((message,)).write(server_writer)
-                        result = EOF(capability, handshake.status)
-                    else:
-                        result = OK(capability, handshake.status)
+                    num_columns = len(data[0])
+                    column_definitions = [ColumnDefinition(f"column_{i+1}") for i in range(num_columns)]
+                    ColumnDefinitionList(column_definitions).write(server_writer)
+                    EOF(capability, handshake.status).write(server_writer)
+
+                    # Envío de las filas
+                    for row in data:
+                        ResultSet(row).write(server_writer)
+                    result = EOF(capability, handshake.status)
 
                 else:
                     logging.info("Consulta recibida: %s", query)
-                    # result = OK(capability, handshake.status)
-                    error_message = '\n'.join(data[1:])  # Excluye '$eot' y la línea vacía al final
-                    ColumnDefinitionList((ColumnDefinition('Error'),)).write(server_writer)
-                    EOF(capability, handshake.status).write(server_writer)
-                    ResultSet((error_message,)).write(server_writer)
-                    result = EOF(capability, handshake.status)
-                    # Envía un paquete de error con el mensaje de DES
-                    # result = ERR(capability, status=data)
-                        # Dependiendo del resultado de DES, puedes enviar un OK o un ERR.
-                        # Por ahora, simplemente enviamos un OK. Modifica según tus necesidades.
+                    result = ERR(capability, error_msg='Mensaje de error personalizado')
 
         else:
             result = ERR(capability)
