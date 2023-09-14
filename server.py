@@ -96,7 +96,6 @@ def parse_des_response(des_result):
     return True, rows
 
 
-
 def read_until_markerInitialMessage(q, marker, timeout=10):
     end_time = time.time() + timeout
     buffer = ''
@@ -131,20 +130,6 @@ def read_until_markerInitialMessage(q, marker, timeout=10):
 
     return None
 
-
-
-#def read_until_marker(q, marker, timeout=10):
-    #end_time = time.time() + timeout
-    #buffer = ''
-    #while time.time() < end_time:
-        #try:
-            #char = q.get(timeout=0.1)
-        #except queue.Empty:
-            #continue
-        #buffer += char
-        #if marker in buffer[-len(marker):]:
-            #break
-    #return buffer
 
 def read_until_marker(q, *markers):
     buffer = ''
