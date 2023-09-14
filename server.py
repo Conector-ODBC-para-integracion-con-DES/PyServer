@@ -93,7 +93,6 @@ def parse_des_response(des_result):
     # Separar cada línea por el delimitador para obtener las columnas
     rows = [line.split(' | ') for line in lines]
     
-    logging.info("Líneas de la respuesta de DES: %s", rows)
     return True, rows
 
 
@@ -147,28 +146,30 @@ def read_until_markerInitialMessage(q, marker, timeout=10):
             #break
     #return buffer
 
-def read_until_marker(q, marker):
+def read_until_marker(q, *markers):
     buffer = ''
     while True:
         try:
             char = q.get(timeout=0.1)
             buffer += char
-            if marker in buffer[-len(marker):]:
+            if any(marker in buffer[-len(marker):] for marker in markers):
                 break
         except queue.Empty:
             break  # Salimos inmediatamente si no hay más datos en la cola.
     return buffer
 
 
-
 def execute_des_query(process, q, query):
-    transformed_query = "/tapi " + query
-    # transformed_query = "" + query
+    if "/" in query:
+        transformed_query = query
+    else:
+        transformed_query = "/tapi " + query
+        
     logging.info("Ejecutando consulta: %s", transformed_query)
     process.stdin.write(transformed_query + '\n')
     process.stdin.flush()
     
-    response = read_until_marker(q, "|:")
+    response = read_until_marker(q, "|:", "DES>")
     return response
 
 
